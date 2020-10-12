@@ -46,6 +46,7 @@ review_page %>%
 #for each case we write a function:
 top15_scrape <- function(i, html_page){
   
+  #scrape web id for ith accomodation:
   link_id <- html_page %>%
     html_nodes(glue("header.box > ul:nth-child(2) > li:nth-child({ i })")) %>% 
     html_node("a") %>% 
@@ -53,6 +54,11 @@ top15_scrape <- function(i, html_page){
   
   #create web link
   web_link <- paste0("https://www.studentcrowd.com/", link_id)
+  
+  #scrape the affiliation:
+  affiliation <- html_page %>% 
+      html_node(glue("#{ link_id } > div:nth-child(1) > div:nth-child(2) > div:nth-child(3)")) %>% 
+      html_text()
   
   #read site page:
   site_page <- read_html(web_link)
@@ -80,8 +86,11 @@ top15_scrape <- function(i, html_page){
     html_nodes("tr") %>%
     html_text()
   
+  #grab the affiliation 
+  
   #and create output:
   output <- tibble(sitename = accomodation_name,
+                   affiliation = affiliation,
                    postcode = str_remove(all_text[str_detect(all_text, "Post")], "Postcode"))
   
   output
@@ -99,12 +108,19 @@ top15_rated_sites <- top15_rated_sites %>%
 unrated_scrape <- function(i, html_page){
   
   ###scrape weblink directly:
-  web_id <- html_page %>% 
+  web <- html_page %>% 
     html_nodes(glue("ul.m0:nth-child(5) > li:nth-child({ i }) > div:nth-child(2) > meta:nth-child(2)")) %>%
     html_attr("content")
   
+  web_id <- str_extract(web, "(?<=#).*")
+  
   #extract everything after the # to extract link to page:
-  web_link <- paste0("https://www.studentcrowd.com/", str_extract(web_id, "(?<=#).*"))
+  web_link <- paste0("https://www.studentcrowd.com/", web_id)
+  
+  #scrape the affiliation:
+  affiliation <- html_page %>% 
+    html_node(glue("#{ web_id } > div:nth-child(1) > div:nth-child(2) > div:nth-child(3)")) %>% 
+    html_text()
   
   ###read site page:
   site_page <- read_html(web_link)
@@ -128,6 +144,7 @@ unrated_scrape <- function(i, html_page){
   
   #and create output:
   output <- tibble(sitename = accomodation_name,
+                   affiliation = affiliation,
                    postcode = str_remove(all_text[str_detect(all_text, "Post")], "Postcode"))
   
   output
@@ -135,15 +152,16 @@ unrated_scrape <- function(i, html_page){
 }
 
 #run over 66 values of i:
-unrated_sites <- c(1:80) %>% map_df(~unrated_scrape(i = .x,
+unrated_sites <- c(1:66) %>% map_df(~unrated_scrape(i = .x,
                                                     html_page = review_page))
 
 #remove entries which do not look like a postcode:
-unrated_sites <- unrated_sites %>% filter(str_detect(postcode, "[A-Z][A-Z][0-9]"))
+unrated_sites <- unrated_sites %>% filter(str_detect(postcode, "[A-Z][A-Z][0-9]")) %>% 
+                                   mutate(sitename = str_trim(str_remove_all(sitename, "Information")))
 
 #combine results and write to csv:
 ed_student_accomodations <- bind_rows(top15_rated_sites,
                                       unrated_sites)
 
-write.csv(ed_student_accomodations, "student-crowd-edinburgh-accomodations-2020.csv",
+write.csv(ed_student_accomodations, "student-crowd-edinburgh-accomodations-2020-rev2.csv",
           row.names = FALSE)
